@@ -40,6 +40,7 @@ import GHC.Num(Integer)
 import GHC.Base(String)
 import GHC.Show(Show(..))
 import GHC.Read(Read(..))
+import GHC.Records(Symbol)
 import GHC.Prim(magicDict)
 import Data.Maybe(Maybe(..))
 import Data.Proxy(Proxy(..))
@@ -48,9 +49,6 @@ import Unsafe.Coerce(unsafeCoerce)
 
 -- | (Kind) This is the kind of type-level natural numbers.
 data Nat
-
--- | (Kind) This is the kind of type-level symbols.
-data Symbol
 
 
 --------------------------------------------------------------------------------

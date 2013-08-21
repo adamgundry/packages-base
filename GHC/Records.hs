@@ -1,9 +1,39 @@
 {-# LANGUAGE MultiParamTypeClasses, KindSignatures, DataKinds,
-             TypeFamilies, RankNTypes, FlexibleInstances, FlexibleContexts #-}
+             TypeFamilies, RankNTypes, FlexibleInstances, FlexibleContexts,
+             NoImplicitPrelude, EmptyDataDecls #-}
+
+-----------------------------------------------------------------------------
+-- |
+-- Module      :  GHC.Records
+-- Copyright   :  (c) Adam Gundry, 2013
+-- License     :  BSD-style (see libraries/base/LICENSE)
+--
+-- Maintainer  :  libraries@haskell.org
+-- Stability   :  internal
+-- Portability :  non-portable (GHC extensions)
+--
+-- This is an internal GHC module that defines classes relating to
+-- the OverloadedRecordFields extension.
+--
+-----------------------------------------------------------------------------
+
+{-
+Note [Dependency on GHC.Records]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+This module must be compiled before any module that declares a record
+field, because the class declarations below are loaded in order to
+generate the supporting definitions for overloaded record fields.  If
+you receive the error "Failed to load interface for ‛GHC.Records’"
+while compiling base, this module has not been compiled early enough.
+-}
 
 module GHC.Records where
 
-import GHC.TypeLits (Symbol)
+-- AMG TODO: is this enough? Why is it needed?
+import GHC.Integer ()
+
+-- | (Kind) This is the kind of type-level symbols.
+data Symbol
 
 
 {-
