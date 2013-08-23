@@ -29,7 +29,6 @@ while compiling base, this module has not been compiled early enough.
 
 module GHC.Records where
 
--- AMG TODO: is this enough? Why is it needed?
 import GHC.Integer ()
 
 -- | (Kind) This is the kind of type-level symbols.
@@ -62,6 +61,7 @@ type family SetResult (r :: *) (f :: Symbol) (t :: *) :: *
 -- | @Has r f t@ means that @r@ is a record type with field @f@ of type @t@.
 class t ~ GetResult r f  -- See Note [Functional dependency via equality superclass]
           => Has r (f :: Symbol) t where
+  -- | Polymorphic field selector
   getField :: proxy f -> r -> t
 
 -- | @Upd r f t@ means that @r@ is a record type with field @f@ which
@@ -69,6 +69,7 @@ class t ~ GetResult r f  -- See Note [Functional dependency via equality supercl
 class (Has r f (GetResult r f), r ~ SetResult r f (GetResult r f))
               -- See Note [Superclasses of Upd]
           => Upd (r :: *) (f :: Symbol) (t :: *) where
+  -- | Polymorphic field update
   setField :: proxy f -> r -> t -> SetResult r f t
 
 
@@ -123,7 +124,7 @@ illegal:
         type SetResult (T a) "foo" [b] = T b
 
 If this were allowed, both type families could become associated
-types. The difference is minimal, however.
+types. See Trac #8161. The difference is minimal, however.
 
 
 Note [Superclasses of Upd]
