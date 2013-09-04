@@ -22,9 +22,10 @@ Note [Dependency on GHC.Records]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 This module must be compiled before any module that declares a record
 field, because the class declarations below are loaded in order to
-generate the supporting definitions for overloaded record fields.  If
-you receive the error "Failed to load interface for ‛GHC.Records’"
-while compiling base, this module has not been compiled early enough.
+generate the supporting definitions for overloaded record fields. To
+achieve this, this module is imported by GHC.Base. If you receive the
+error "Failed to load interface for ‛GHC.Records’" while compiling
+base, this module has not been compiled early enough.
 -}
 
 module GHC.Records where
@@ -45,14 +46,15 @@ following type classes ('Has' and 'Upd') and type families
 gives rise to the instances
 
     type instance GetResult (T a) "foo"     = [a]
-    type instance SetResult (T a) "foo" [b] = T b
-    instance Has (T a) "foo" [a]
-    instance t ~ [b] => Upd (T a) "foo" t
+    type instance SetResult (T a) "foo" [c] = T c
+    instance b ~ [a] => Has (T a) "foo" b
+    instance b ~ [c] => Upd (T a) "foo" b
 -}
 
 
 -- | @GetResult r f@ is the type of the field @f@ in record type @r@.
 type family GetResult (r :: *) (f :: Symbol) :: *
+-- See Note [Why not associated types]
 
 -- | @SetResult r f t@ is the record type that results from setting
 -- the field @f@ of record type @r@ to @t@.
@@ -96,17 +98,37 @@ then we get
 Now substituting for 'beta' in the wanted constraint and reducing
 'GetResult' gives
 
-    [Wanted] Has (T alpha) "foo" [alpha]
+    [Wanted] Has (T alpha) "foo" [alpha].
 
-so the constraint is solved via
+This constraint could be solved via
 
     instance Has (T a) "foo" [a].
 
-On the other hand, the third parameter of 'Upd' is not functionally
+However, if the field type involved a type family, for example
+
+    type family F x
+    data U a = MkU { foo :: F a }
+
+then we would end up with
+
+    [Wanted] Has (U alpha) "foo" (F alpha)
+
+which does not obviously match
+
+    instance Has (U a) "foo" (F a).
+
+Thus we always generate an instance like
+
+    instance b ~ F a => Has (U a) "foo" b
+
+that matches only on the first two parameters.
+
+
+In any case, the third parameter of 'Upd' is not functionally
 dependent on the first two, because it represents the new type being
 assigned to the field, not its current type. Thus we must generate
 
-    instance t ~ [b] => Upd (T a) "foo" t
+    instance b ~ [c] => Upd (T a) "foo" b
 
 to ensure that a constraint like
 
@@ -114,6 +136,9 @@ to ensure that a constraint like
 
 will be solved.
 
+
+Note [Why not associated types]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 'GetResult' could be an associated type, but 'SetResult' cannot, so
 for consistency both are separate top-level type families.  The
 parameters of associated types must be exactly the same as the class
