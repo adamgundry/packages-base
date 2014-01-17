@@ -1,6 +1,6 @@
 {-# LANGUAGE MultiParamTypeClasses, KindSignatures, DataKinds,
              TypeFamilies, RankNTypes, FlexibleInstances, FlexibleContexts,
-             NoImplicitPrelude, EmptyDataDecls #-}
+             NoImplicitPrelude, EmptyDataDecls, MagicHash #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -31,6 +31,7 @@ base, this module has not been compiled early enough.
 module GHC.Records where
 
 import GHC.Integer ()
+import GHC.Prim (Proxy#)
 
 -- | (Kind) This is the kind of type-level symbols.
 data Symbol
@@ -39,114 +40,62 @@ data Symbol
 {-
 The OverloadedRecordFields extension generates instances for the
 following type classes ('Has' and 'Upd') and type families
-('GetResult' and 'SetResult'). For example, the datatype
+('FldTy' and 'UpdTy'). For example, the datatype
 
     data T a = MkT { foo :: [a] }
 
 gives rise to the instances
 
-    type instance GetResult (T a) "foo"     = [a]
-    type instance SetResult (T a) "foo" [c] = T c
-    instance b ~ [a] => Has (T a) "foo" b
+    type instance FldTy (T a) "foo"     = [a]
+    type instance UpdTy (T a) "foo" [c] = T c
+    instance Has (T a) "foo"
     instance b ~ [c] => Upd (T a) "foo" b
 -}
 
 
--- | @GetResult r f@ is the type of the field @f@ in record type @r@.
-type family GetResult (r :: *) (f :: Symbol) :: *
+-- | @FldTy r n@ is the type of the field @n@ in record type @r@.
+type family FldTy (r :: *) (n :: Symbol) :: *
 -- See Note [Why not associated types]
 
--- | @SetResult r f t@ is the record type that results from setting
--- the field @f@ of record type @r@ to @t@.
-type family SetResult (r :: *) (f :: Symbol) (t :: *) :: *
+-- | @UpdTy r n t@ is the record type that results from setting
+-- the field @n@ of record type @r@ to @t@.
+type family UpdTy (r :: *) (n :: Symbol) (t :: *) :: *
 
--- | @Has r f t@ means that @r@ is a record type with field @f@ of type @t@.
-class t ~ GetResult r f  -- See Note [Functional dependency via equality superclass]
-          => Has r (f :: Symbol) t where
+-- | @Has r n@ means that @r@ is a record type with a field @n@.
+class Has r (n :: Symbol) where
   -- | Polymorphic field selector
-  getField :: proxy f -> r -> t
+  getField :: Proxy# n -> r -> FldTy r n
 
--- | @Upd r f t@ means that @r@ is a record type with field @f@ which
+-- | @Upd n r t@ means that @r@ is a record type with field @n@ which
 -- can be assigned type @t@.
-class (Has r f (GetResult r f), r ~ SetResult r f (GetResult r f))
-              -- See Note [Superclasses of Upd]
-          => Upd (r :: *) (f :: Symbol) (t :: *) where
+class ( Has r n
+      , r ~ UpdTy r n (FldTy r n)  -- See Note [Superclasses of Upd]
+      ) => Upd (r :: *) (n :: Symbol) (t :: *) where
   -- | Polymorphic field update
-  setField :: proxy f -> r -> t -> SetResult r f t
+  setField :: Proxy# n -> r -> t -> UpdTy r n t
 
 
 {-
-Note [Functional dependency via equality superclass]
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-The third parameter of the 'Has' class (the field type) is
-functionally dependent on the first two (the record type and field
-name), but is present to allow for syntactic sugar:
+Note [Syntactic sugar for Has constraints]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The syntactic sugar
 
-    r { f :: t }    translates to    Has r "f" t
+    r { f :: t }
 
-The functional dependency is encoded using the 'GetResult' type
-family, via the equality superclass 't ~ GetResult r f' in the
-declaration of 'Has'. Thanks to this superclass, if we have a
-constraint
+translates to the pair of constraints
 
-    [Wanted] Has (T alpha) "foo" beta
-
-then we get
-
-    [Derived] beta ~ GetResult (T alpha) "foo".
-
-Now substituting for 'beta' in the wanted constraint and reducing
-'GetResult' gives
-
-    [Wanted] Has (T alpha) "foo" [alpha].
-
-This constraint could be solved via
-
-    instance Has (T a) "foo" [a].
-
-However, if the field type involved a type family, for example
-
-    type family F x
-    data U a = MkU { foo :: F a }
-
-then we would end up with
-
-    [Wanted] Has (U alpha) "foo" (F alpha)
-
-which does not obviously match
-
-    instance Has (U a) "foo" (F a).
-
-Thus we always generate an instance like
-
-    instance b ~ F a => Has (U a) "foo" b
-
-that matches only on the first two parameters.
-
-
-In any case, the third parameter of 'Upd' is not functionally
-dependent on the first two, because it represents the new type being
-assigned to the field, not its current type. Thus we must generate
-
-    instance b ~ [c] => Upd (T a) "foo" b
-
-to ensure that a constraint like
-
-    [Wanted] Upd (T alpha) "foo" beta
-
-will be solved.
+    (Has r "f", t ~ FldTy r "f")
 
 
 Note [Why not associated types]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-'GetResult' could be an associated type, but 'SetResult' cannot, so
-for consistency both are separate top-level type families.  The
-parameters of associated types must be exactly the same as the class
-header (they cannot be more specific instances), so this is currently
-illegal:
+'FldTy' could be an associated type, but 'UpdTy' cannot, so for
+consistency both are separate top-level type families.  The parameters
+of associated types must be exactly the same as the class header (they
+cannot be more specific instances), so this is currently illegal:
 
     instance t ~ [b] => Upd (T a) "foo" t where
-        type SetResult (T a) "foo" [b] = T b
+        type UpdTy (T a) "foo" [b] = T b
 
 If this were allowed, both type families could become associated
 types. See Trac #8161. The difference is minimal, however.
@@ -157,16 +106,16 @@ Note [Superclasses of Upd]
 The superclasses of 'Upd' ensure that there is always a corresponding
 'Has' instance, and that the invariant
 
-    r ~ SetResult r f (GetResult r f)
+    r ~ UpdTy r n (FldTy r n)
 
 always holds. This says that setting a field without changing its type
 does not change the type of the record. It is included so that
 
-    [Given] Upd r f (GetResult r f)
+    [Given] Upd r n (FldTy r n)
 
 implies
 
-    setField :: proxy f -> r -> t -> r
+    setField :: Proxy# n -> r -> GetField r n -> r
 
 which may make it easier to write some very polymorphic code to update
 fields. If you can think of a concrete example of why this is useful,
@@ -174,28 +123,29 @@ please add it here!
 -}
 
 
--- | @Accessor p f@ means that @p@ is a type into which a field with
--- name @f@ can be translated.  The canonical instance is for the
--- function space (->), which just returns the getter (completely
--- ignoring the setter). Lens libraries may give instances of
--- 'Accessor' so that overloaded fields can be used as lenses.
-class Accessor (p :: * -> * -> *) (f :: Symbol) where
-  -- | @accessor z getter setter@ injects a getter and setter pair into @p@
-  accessor :: proxy f -> (r -> GetResult r f) ->
-              (forall t . Upd r f t => r -> t -> SetResult r f t) ->
-              p r (GetResult r f)
+-- | @Accessor p r n@ means that @p@ is a type into which a field with
+-- name @n@ in record @r@ can be translated.  The canonical instance
+-- is for the function space (->), which just returns the getter
+-- (completely ignoring the setter).  Lens libraries may give instances
+-- of 'Accessor' so that overloaded fields can be used as lenses.
+class Accessor (p :: * -> * -> *) (r :: *) (n :: Symbol) where
+  -- | @accessField z getter setter@ injects a getter and setter pair into @p@
+  accessField :: Proxy# n ->
+                 (Has r n => r -> FldTy r n) ->
+                 (forall t . Upd r n t => r -> t -> UpdTy r n t) ->
+                 p r (FldTy r n)
 
-instance Accessor (->) f where
-  accessor _ getter _ = getter
+instance Has r n => Accessor (->) r n where
+  accessField _ getter _ = getter
 
 
 {-
 When the OverloadedRecordFields extension is enabled, a field @foo@ in
 an expression is translated into
 
-    field (Proxy :: Proxy "foo") :: (Has r "foo" t, Accessor p "foo") => p r t
+    field (proxy# :: Proxy# "foo") :: Accessor p r "foo" => p r (FldTy r n)
 -}
 
 -- | Target for translation of overloaded record field occurrences
-field :: forall proxy f r t p . (Has r f t, Accessor p f) => proxy f -> p r t
-field z = accessor z (getField z) (setField z)
+field :: forall p r n . Accessor p r n => Proxy# n -> p r (FldTy r n)
+field z = accessField z (getField z) (setField z)
