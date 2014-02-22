@@ -50,6 +50,10 @@ import Unsafe.Coerce(unsafeCoerce)
 -- | (Kind) This is the kind of type-level natural numbers.
 data Nat
 
+-- The kind Symbol of type-level symbols is defined in GHC.Records,
+-- because it is used there and that module must be compiled very
+-- early (see Note [Dependency on GHC.Records] in GHC.Records).
+-- It is re-exported by this module.
 
 --------------------------------------------------------------------------------
 

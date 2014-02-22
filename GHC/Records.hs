@@ -5,16 +5,17 @@
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  GHC.Records
--- Copyright   :  (c) Adam Gundry, 2013
+-- Copyright   :  (c) Adam Gundry, 2013-2014
 -- License     :  BSD-style (see libraries/base/LICENSE)
 --
 -- Maintainer  :  libraries@haskell.org
 -- Stability   :  internal
 -- Portability :  non-portable (GHC extensions)
 --
--- This is an internal GHC module that defines classes relating to
--- the OverloadedRecordFields extension.
---
+-- This is an internal GHC module that defines classes relating to the
+-- OverloadedRecordFields extension.  For notes on the implementation
+-- of OverloadedRecordFields, see
+-- https://ghc.haskell.org/trac/ghc/wiki/Records/OverloadedRecordFields/Implementation
 -----------------------------------------------------------------------------
 
 {-
@@ -50,6 +51,13 @@ gives rise to the instances
     type instance UpdTy (T a) "foo" [c] = T c
     instance b ~ [a] => Has (T a) "foo" b
     instance b ~ [c] => Upd (T a) "foo" b
+
+See compiler/typecheck/TcFldInsts.lhs for the code that generates
+these instances.  The instances are generated for every datatype,
+regardless of whether the extension is enabled, but they are not
+exported using the normal mechanism, because the instances in scope
+correspond exactly to the record fields in scope.  See
+Note [Instance scoping for OverloadedRecordFields] in TcFldInsts.
 -}
 
 
